@@ -15,6 +15,8 @@ from fastmcp import FastMCP
 from oauthlib.oauth1 import Client as OAuth1Client
 from requests_oauthlib import OAuth1Session
 
+import xauth
+
 HTTP_METHODS = {
     "get",
     "post",
@@ -335,6 +337,31 @@ def print_oauth1_header_probe(oauth1_client: OAuth1Client, base_url: str) -> Non
         print("OAuth1 Authorization header missing from signed probe request.")
 
 
+def build_oauth2_auth() -> xauth.XOAuth2Auth:
+    """Build the OAuth2 user-context auth (bearer + auto-refresh) from env/token store.
+
+    Unlike the OAuth1 path, this never opens a browser at startup: it loads the
+    token store (or seeds it from env), and refreshes the access token on demand.
+    Authorize once with ``generate_authtoken.py`` to create the store.
+    """
+    client_id = os.getenv("X_OAUTH2_CLIENT_ID") or os.getenv("CLIENT_ID")
+    if not client_id:
+        raise RuntimeError(
+            "Missing X_OAUTH2_CLIENT_ID (or CLIENT_ID) for OAuth2 user-context auth."
+        )
+    client_secret = os.getenv("X_OAUTH2_CLIENT_SECRET") or os.getenv("CLIENT_SECRET")
+
+    store = xauth.TokenStore(xauth.default_token_store_path())
+    if not store.load() and not store.seed_from_env():
+        raise RuntimeError(
+            f"No OAuth2 token store at {store.path} and nothing to seed from. "
+            "Run `python generate_authtoken.py` to authorize first."
+        )
+    LOGGER.info("OAuth2 token store: %s", store.path)
+    manager = xauth.TokenManager(store, client_id, client_secret)
+    return xauth.XOAuth2Auth(manager)
+
+
 def create_mcp() -> FastMCP:
     load_env()
     debug_enabled = setup_logging()
@@ -345,10 +372,22 @@ def create_mcp() -> FastMCP:
     base_url = os.getenv("X_API_BASE_URL", "https://api.x.com")
     timeout = float(os.getenv("X_API_TIMEOUT", "30"))
 
-    oauth1_client = build_oauth1_client()
+    # "oauth2" (default): user-context bearer token, headless + auto-refresh, can
+    # read bookmarks. "oauth1": upstream behavior (browser consent each startup,
+    # no bookmarks).
+    auth_mode = os.getenv("XMCP_AUTH_MODE", "oauth2").strip().lower()
     print_oauth_header = is_truthy(os.getenv("X_OAUTH_PRINT_AUTH_HEADER", "0"))
-    if print_oauth_header:
-        print_oauth1_header_probe(oauth1_client, base_url)
+
+    oauth2_auth: xauth.XOAuth2Auth | None = None
+    oauth1_client: OAuth1Client | None = None
+    if auth_mode == "oauth2":
+        oauth2_auth = build_oauth2_auth()
+    elif auth_mode == "oauth1":
+        oauth1_client = build_oauth1_client()
+        if print_oauth_header:
+            print_oauth1_header_probe(oauth1_client, base_url)
+    else:
+        raise RuntimeError(f"Unknown XMCP_AUTH_MODE: {auth_mode!r} (expected oauth2 or oauth1).")
 
     spec = load_openapi_spec()
     filtered_spec = filter_openapi_spec(spec)
@@ -387,6 +426,9 @@ def create_mcp() -> FastMCP:
         request.url = request.url.copy_with(params=normalized)
 
     b3_flags = os.getenv("X_B3_FLAGS", "1")
+
+    async def set_b3_flags(request: httpx.Request) -> None:
+        request.headers["X-B3-Flags"] = b3_flags
 
     async def sign_oauth1_request(request: httpx.Request) -> None:
         request.headers["X-B3-Flags"] = b3_flags
@@ -435,12 +477,20 @@ def create_mcp() -> FastMCP:
                 text = text[:1000] + "...<truncated>"
             LOGGER.warning("X API error body: %s", text)
 
+    if auth_mode == "oauth2":
+        request_hooks = [normalize_query_params, set_b3_flags, log_request]
+        client_auth = oauth2_auth
+    else:
+        request_hooks = [normalize_query_params, sign_oauth1_request, log_request]
+        client_auth = None
+
     client = httpx.AsyncClient(
         base_url=base_url,
         headers={},
         timeout=timeout,
+        auth=client_auth,
         event_hooks={
-            "request": [normalize_query_params, sign_oauth1_request, log_request],
+            "request": request_hooks,
             "response": [log_response],
         },
     )

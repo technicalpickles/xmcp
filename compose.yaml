@@ -1,0 +1,56 @@
+# Run with secrets injected from 1Password, never written to disk:
+#
+#   1) Authorize once (opens a browser, writes tokens to the shared volume).
+#      --no-masking is required so op doesn't redact the client_id in the printed
+#      authorize URL (which would make the link unusable):
+#        op run --no-masking --env-file=.env.op -- docker compose run --rm --service-ports authorize
+#   2) Start the server:
+#        op run --env-file=.env.op -- docker compose up -d xmcp
+#
+# The MCP endpoint is http://127.0.0.1:8000/mcp (localhost-only).
+
+services:
+  xmcp:
+    build: .
+    image: xmcp-readonly:local
+    ports:
+      # Host-side bind to 127.0.0.1 keeps it off the network.
+      - "127.0.0.1:8000:8000"
+    environment:
+      PYTHONUNBUFFERED: "1"
+      XMCP_AUTH_MODE: oauth2
+      X_OAUTH2_CLIENT_ID: ${X_OAUTH2_CLIENT_ID}
+      X_OAUTH2_CLIENT_SECRET: ${X_OAUTH2_CLIENT_SECRET}
+      # Optional seed used only if the token volume is empty:
+      X_OAUTH2_REFRESH_TOKEN: ${X_OAUTH2_REFRESH_TOKEN:-}
+      X_API_TOOL_ALLOWLIST: ${X_API_TOOL_ALLOWLIST:-}
+      X_API_DEBUG: "1"
+    volumes:
+      - xmcp-tokens:/data
+    restart: unless-stopped
+    labels:
+      # OrbStack serves the container at this hostname (resolves on this machine
+      # only). Override with the XMCP_ORB_DOMAIN env var; defaults to xmcp.local.
+      - "dev.orbstack.domains=${XMCP_ORB_DOMAIN:-xmcp.local}"
+
+  # One-shot authorization helper. Shares the token volume with the server.
+  # Publishes 8976 so the browser OAuth2 redirect can reach the callback.
+  authorize:
+    build: .
+    image: xmcp-readonly:local
+    profiles: ["tools"]
+    ports:
+      - "127.0.0.1:8976:8976"
+    environment:
+      PYTHONUNBUFFERED: "1"
+      X_OAUTH2_CLIENT_ID: ${X_OAUTH2_CLIENT_ID}
+      X_OAUTH2_CLIENT_SECRET: ${X_OAUTH2_CLIENT_SECRET}
+      XMCP_OAUTH2_SCOPES: ${XMCP_OAUTH2_SCOPES:-}
+      XMCP_OAUTH2_CALLBACK_BIND: "0.0.0.0"
+      XMCP_OAUTH2_REDIRECT_URI: "http://127.0.0.1:8976/callback"
+    volumes:
+      - xmcp-tokens:/data
+    command: ["python", "generate_authtoken.py"]
+
+volumes:
+  xmcp-tokens:

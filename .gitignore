@@ -7,4 +7,8 @@ env/
 .env
 .env.*
 !.env.example
+!.env.op.example
 scripts/
+
+# OAuth2 token store (rotating refresh token) when running on the host
+.tokens/

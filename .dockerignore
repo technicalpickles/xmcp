@@ -1,0 +1,8 @@
+.git
+.tokens
+.env
+.env.op
+__pycache__
+*.pyc
+.venv
+test_grok_mcp.py

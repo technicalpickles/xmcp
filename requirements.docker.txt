@@ -1,0 +1,9 @@
+# Minimal runtime deps for the OAuth2 read-only server (oauth2 mode).
+# Excludes xai-sdk / xdk, which upstream requirements.txt pulls in only for the
+# optional Grok test client. server.py still imports requests + requests-oauthlib
+# at module load (OAuth1 path), so those stay even though oauth2 mode is the default.
+fastmcp
+httpx
+python-dotenv
+requests
+requests-oauthlib
