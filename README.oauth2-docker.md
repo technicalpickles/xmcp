@@ -62,7 +62,11 @@ av save --project-directory=. X_OAUTH2_CLIENT_SECRET
 Paste each value from the 1Password item at the hidden prompt.
 
 Varlock must run under node (the `npm:varlock` pin), not the standalone binary:
-Automic Vault rejects the standalone binary as the requesting process.
+Automic Vault rejects the standalone binary as the requesting process. `varlock run`
+has to be launched by a real shell: from fish, a `mise run` task or a script,
+Automic Vault answers "Varlock application process is unavailable". The mise
+tasks go through `zsh -fc '...; exit $?'` for that reason (the trailing command
+keeps zsh from exec-ing away). From fish, wrap any other call the same way.
 
 ### 3. Authorize once
 
