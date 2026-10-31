@@ -1,0 +1,23 @@
+[tools]
+# varlock must run inside node for the Automic Vault plugin: the standalone
+# varlock binary is rejected by Automic Vault ("application process unavailable").
+node = "24"
+"npm:varlock" = "1.24.0"
+
+[tasks.setup]
+description = "Confirm and cache the pinned Automic Vault varlock plugin (interactive, once)"
+# `varlock install-plugin` only exists in the standalone binary. Under npm varlock,
+# a load prompts for confirmation and caches the plugin; the secrets not being
+# saved yet is fine, the plugin is cached before they are resolved.
+run = "varlock load || true"
+
+# Automic Vault only accepts a real shell as varlock's direct parent (not fish,
+# not mise), so these go through zsh. `; exit $?` stops zsh from exec-ing the last
+# command, which would make mise the parent again, and passes the exit status on.
+[tasks.authorize]
+description = "One-time OAuth2 authorization (prints the authorize URL)"
+run = ["zsh -fc 'varlock run -- docker compose run --rm --service-ports authorize; exit $?'"]
+
+[tasks.up]
+description = "Start the MCP server"
+run = ["zsh -fc 'varlock run -- docker compose up -d xmcp; exit $?'"]

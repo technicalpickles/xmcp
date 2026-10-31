@@ -42,15 +42,16 @@ Upstream only implements OAuth1 user-context signing. Two problems for my use
   upstream's README references but never shipped.
 - `Dockerfile`, `compose.yaml`, `requirements.docker.txt`, `.dockerignore` —
   minimal image; token store on a named volume; host bind to `127.0.0.1`;
-  configurable OrbStack domain (`XMCP_ORB_DOMAIN`); secrets via `op run`.
-- `.env.op.example` — 1Password `op://` reference template + minimal tool allowlist.
+  configurable OrbStack domain (`XMCP_ORB_DOMAIN`); secrets via `varlock run`.
+- `.env.schema`, `mise.toml` — varlock schema (secrets from Automic Vault) +
+  pinned tooling and tasks, plus the minimal tool allowlist.
 - `README.oauth2-docker.md` — the runbook.
 
 **Modified files**
 - `server.py` (+54 / -4) — adds `XMCP_AUTH_MODE` and `build_oauth2_auth()`. In
   `oauth2` mode the client uses `XOAuth2Auth` and skips OAuth1 signing/browser
   consent entirely. The OAuth1 code path is preserved unchanged.
-- `.gitignore` — keep `.env.op.example` tracked; ignore the local `.tokens/` store.
+- `.gitignore` — keep `.env.schema` tracked; ignore the local `.tokens/` store.
 
 ## Re-basing on upstream
 
