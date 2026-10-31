@@ -16,7 +16,8 @@ server.
 - **`server.py`** — new `XMCP_AUTH_MODE` (`oauth2` default, `oauth1` = upstream).
   In `oauth2` mode it never opens a browser at startup.
 - **`Dockerfile` / `compose.yaml`** — slim image, token store on a named volume,
-  host bind to `127.0.0.1` only, secrets injected via `op run`.
+  host bind to `127.0.0.1` only, secrets injected via `varlock run` from
+  Automic Vault (`.env.schema`).
 
 ## Auth modes
 
@@ -43,33 +44,41 @@ like, or message. `offline.access` is required to get a refresh token.
 - Callback / Redirect URI: `http://127.0.0.1:8976/callback`
 - Copy the **OAuth2 Client ID** and **Client Secret** (these are *not* the
   API/consumer keys) into your 1Password item as fields `client_id` and
-  `client_secret`.
+  `client_secret`. 1Password stays the long-term store.
 
 ### 2. Local config
 
+Secrets are declared in `.env.schema` and resolved by [varlock](https://varlock.dev)
+from [Automic Vault](https://github.com/automic-vault/automic-vault/blob/main/docs/varlock.md).
+Needs Automic Vault 3.9.0 or newer.
+
 ```bash
-cp .env.op.example .env.op
-# edit .env.op so the op:// paths point at your 1Password vault/item
+mise install                 # node + varlock, pinned in mise.toml
+mise run setup               # confirm (once) and cache the pinned Automic Vault varlock plugin
+av save --project-directory=. X_OAUTH2_CLIENT_ID
+av save --project-directory=. X_OAUTH2_CLIENT_SECRET
 ```
+
+Paste each value from the 1Password item at the hidden prompt.
+
+Varlock must run under node (the `npm:varlock` pin), not the standalone binary:
+Automic Vault rejects the standalone binary as the requesting process.
 
 ### 3. Authorize once
 
 ```bash
-op run --no-masking --env-file=.env.op -- docker compose run --rm --service-ports authorize
+mise run authorize
 ```
 
-`--no-masking` is required here: the authorize URL embeds the client_id, and op
-would otherwise replace it with `<concealed by 1Password>` in the printed URL,
-producing an unusable link. (The client secret is never printed.)
-
 This prints a URL (and tries to open your browser). Approve, and the tokens land
-in the `xmcp-tokens` Docker volume. Optionally copy the printed refresh token
-into 1Password as a `refresh_token` seed.
+in the `xmcp-tokens` Docker volume. Every varlock run needs one Automic Vault
+approval. The client ID is deliberately not `@sensitive`, so it stays visible in
+the printed authorize URL.
 
 ## Run
 
 ```bash
-op run --env-file=.env.op -- docker compose up -d xmcp
+mise run up
 ```
 
 MCP endpoint: `http://127.0.0.1:8000/mcp` (localhost only).
@@ -83,8 +92,8 @@ claude mcp add --transport http xmcp http://127.0.0.1:8000/mcp
 ## Running on the host instead of Docker
 
 ```bash
-op run --env-file=.env.op -- uv run --with-requirements requirements.docker.txt python generate_authtoken.py
-op run --env-file=.env.op -- uv run --with-requirements requirements.docker.txt python server.py
+varlock run -- uv run --with-requirements requirements.docker.txt python generate_authtoken.py
+varlock run -- uv run --with-requirements requirements.docker.txt python server.py
 ```
 
 The host token store defaults to `./.tokens/oauth2.json` (gitignored).

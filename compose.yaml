@@ -1,11 +1,10 @@
-# Run with secrets injected from 1Password, never written to disk:
+# Run with secrets injected from Automic Vault via varlock (see .env.schema),
+# never written to disk:
 #
-#   1) Authorize once (opens a browser, writes tokens to the shared volume).
-#      --no-masking is required so op doesn't redact the client_id in the printed
-#      authorize URL (which would make the link unusable):
-#        op run --no-masking --env-file=.env.op -- docker compose run --rm --service-ports authorize
+#   1) Authorize once (opens a browser, writes tokens to the shared volume):
+#        mise run authorize
 #   2) Start the server:
-#        op run --env-file=.env.op -- docker compose up -d xmcp
+#        mise run up
 #
 # The MCP endpoint is http://127.0.0.1:8000/mcp (localhost-only).
 
